@@ -27,7 +27,7 @@ git clone https://github.com/rml-unist/STOMP-Guided_Diffusion.git
 cd STOMP-Guided_Diffusion
 ```
 
-Download [IsaacGym Preview 4](https://developer.nvidia.com/isaac-gym) and extract it under `your/desired/folder`
+Download [IsaacGym Preview 4](https://developer.nvidia.com/isaac-gym) and extract it under `./deps/isaacgym`
 ```bash
 mv ~/Downloads/IsaacGym_Preview_4_Package.tar.gz ~/mpd-public/deps/
 cd ~/mpd-public/deps
