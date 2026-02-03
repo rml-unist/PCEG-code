@@ -1,4 +1,18 @@
-# STOMP-Guided Diffusion
+# Prior-Constrained Exploratory Guidance
+
+## Results 
+<table>
+  <tr>
+    <td align="center">
+      <img src="figures/Dense2D.gif" width="300" />
+    </td>
+    <td align="center">
+      <img src="figures/Panda3D.gif" width="400" />
+    </td>
+  </tr>
+</table>
+
+To see additional qualitative results, please refer to the supplementary video: **_PCEG_supplementary.mp4_**.
 
 ---
 ## Installation
@@ -13,7 +27,7 @@ git clone https://github.com/rml-unist/STOMP-Guided_Diffusion.git
 cd STOMP-Guided_Diffusion
 ```
 
-Download [IsaacGym Preview 4](https://developer.nvidia.com/isaac-gym) and extract it under `deps/isaacgym`
+Download [IsaacGym Preview 4](https://developer.nvidia.com/isaac-gym) and extract it under `your/desired/folder`
 ```bash
 mv ~/Downloads/IsaacGym_Preview_4_Package.tar.gz ~/mpd-public/deps/
 cd ~/mpd-public/deps
@@ -45,6 +59,7 @@ tar -xvf data_trained_models.tar.gz
 After downloading, please change the below variables
 ```
 TRAINED_MODELS_DIR (scripts/inference/inference.py)
+ROBOT_ASSET_DIR (scripts/inference/inference.py : .../isaacgym/asset)
 data_dir (mpd/datasets/trajectories.py)
 ```
 
@@ -61,12 +76,7 @@ model_id: str = 'EnvNarrowPassageDense2D-RobotPointMass'
 model_id: str = 'EnvSimple2D-RobotPointMass'
 model_id: str = 'EnvSpheres3D-RobotPanda'
 ```
-The results will be saved under `data_trained_models/[model_id]/results_inference/`.
-
-To run multiple experiment, use the below command
-```bash
-python ./scripts/inference/launch_test.py
-```
+The results will be saved under `./[model_id]/`.
 
 ---
 ## Credits
