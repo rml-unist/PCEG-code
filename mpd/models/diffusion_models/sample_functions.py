@@ -128,15 +128,6 @@ def noise_ddpm_sample_fn(
         **kwargs
 ):
     
-    # inputs:
-    # model: GuassianDiffusionModel itself
-    # x: x_{t-1}, latent at the previous timestep
-    # noise_std_extra_schedule_fn: maybe about noise scheduls (alpha... ,etc)
-
-    # currently required,
-    # model noise: To change this code as noise guidance (obtained) -> from p_mean _variance
-    # correspoing scaler: sqrt(1-alpha_cumprod) -> noise_scale
-
     t_single=t[0]
     if t_single <=0:
         step_size = min(negative_step_size, step_size)
@@ -145,15 +136,12 @@ def noise_ddpm_sample_fn(
 
     if gradient_free_guide_ver is not None:
         model_mean, _, _, _ = model.p_mean_variance(x=x, noise=pred_noise, hard_conds=hard_conds, context=context, t=t)
-        # sample_num = max(int(sample_num * (1 - t_single/25)), 5)
+        # sample_num = max(int(sample_num * (1 - t_single/25)), 5) # Computationally light version 2 : 2D, 5 : Robot arm
         multi_shape = (sample_num, batch, traj_len, state_dim)
         
-        # Efficient batch sampling of direction with log probability computation
         direction = sampler.sample(multi_shape[:-2])
         direction_logprob = sampler.log_prob(direction)
         direction = noise_scale * direction.view(multi_shape)
-
-        # Efficiently initialize multi_pred_noise without expand and clone
         guider = model_mean.repeat(sample_num, 1, 1, 1) + direction
         
     else:
@@ -241,19 +229,16 @@ def noise_ddim_sample_fn(
 
     pred_noise = model.model(x, t, context)
     batch, traj_len, state_dim = pred_noise.shape
-    # gradient_free_guide_ver = kwargs['gradient_free_guide_ver']
 
     if gradient_free_guide_ver is not None:
         model_mean, _, _, _ = model.p_mean_variance(x=x, noise=pred_noise, hard_conds=hard_conds, context=context, t=t)
-        # sample_num = max(int(sample_num * (1 - t_single/25)), 3) # 3 : 2D, 6 : Robot arm
+        # sample_num = max(int(sample_num * (1 - t_single/25)), 3) # Computationally light version 3 : 2D, 6 : Robot arm
         multi_shape = (sample_num, batch, traj_len, state_dim)
 
-        # Efficient batch sampling of direction with log probability computation
         direction = sampler.sample(multi_shape[:-2])
         # direction_logprob = sampler.log_prob(direction)
         direction = noise_scale * direction.view(multi_shape)
 
-        # Efficiently initialize multi_pred_noise without expand and clone
         guider = model_mean.repeat(sample_num, 1, 1, 1) + direction
         
     else:
@@ -339,7 +324,6 @@ def mean_guide_gradient_steps(
             grad_scaled = guide(guider)
         else:
             raise NotImplementedError
-            #grad_scaled = guide(guider, sampled_direction, sample_num=sample_num, temperature=model_var)
 
         if scale_grad_by_std: 
             grad_scaled = model_var * grad_scaled
@@ -370,22 +354,18 @@ def noise_guide_gradient_steps(
                 grad_scaled = guide(guider, noise, noise_scale)
         else:
             if gradient_free_guide_ver == 'STOMP':
-                grad_scaled = guide(guider, noise, sampled_direction, noise_scale, sample_num=sample_num, temperature=noise_scale*1e-4) # 1e-4
-            elif gradient_free_guide_ver == 'Adv':
-                grad_scaled = guide(guider, noise, sampled_direction, sampled_logprob, noise_scale, sample_num=sample_num, temperature=noise_scale*1e-2)
+                grad_scaled = guide(guider, noise, sampled_direction, noise_scale, sample_num=sample_num, temperature=noise_scale*1e-4)
             
-        #noise_guidance
+        #noise_guidance : grad_scaled : - grad of cost fn
         if noise_scale is not None:
             if gradient_free_guide_ver is not None:
-                # grad_scaled : - grad of cost fn
                 grad_scaled = (1/noise_scale + noise_scale)*grad_scaled
             else:
-                # grad_scaled : - grad of cost fn
                 if latent_guide:
                     grad_scaled = noise_scale * grad_scaled
                 else:
                     grad_scaled = ((1-noise_scale**2)/noise_scale + noise_scale) * grad_scaled
-                    # grad_scaled = noise_scale * grad_scaled # Universal Guidance
+                    # grad_scaled = noise_scale * grad_scaled # Universal Guidance with detached noise
 
         noise = noise - step_size*grad_scaled
 

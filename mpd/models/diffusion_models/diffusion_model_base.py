@@ -167,7 +167,6 @@ class GaussianDiffusionModel(nn.Module, ABC):
                       structured_noise=True,
                       init_structured_noise=False,
                       sampler=None,
-                      recurrencing=False,
                       step_size=0.5,
                       negative_step_size=0.5,
                       **sample_kwargs):
@@ -195,7 +194,7 @@ class GaussianDiffusionModel(nn.Module, ABC):
             else:
                 t = torch.zeros_like(t)
 
-            # To guide nose
+            # To guide noise
             sqrt_one_minus_alpha_cumprod = extract(self.sqrt_one_minus_alphas_cumprod, t, x.shape)
             x, values = sample_fn(self, x, hard_conds, context, t, 
                                   noise_scale=sqrt_one_minus_alpha_cumprod, 
@@ -205,10 +204,7 @@ class GaussianDiffusionModel(nn.Module, ABC):
                                   step_size=step_size,
                                   negative_step_size=negative_step_size,
                                   **sample_kwargs)
-            
-            if recurrencing and 0 >= i > -n_diffusion_steps_without_noise:
-                betas = extract(self.betas, t, x.shape)
-                x = torch.sqrt(1-betas)*x + torch.sqrt(betas)*torch.rand_like(x)
+
             x = apply_hard_conditioning(x, hard_conds)
 
             if return_chain:
@@ -228,7 +224,6 @@ class GaussianDiffusionModel(nn.Module, ABC):
     def ddim_sample(
         self, shape, hard_conds, 
         context=None, return_chain=False,
-        recurrencing = False,
         n_diffusion_steps_without_noise=0,
         init_structured_noise=False,
         structured_noise=False,
@@ -241,10 +236,8 @@ class GaussianDiffusionModel(nn.Module, ABC):
         device = self.betas.device
         batch_size = shape[0]
 
-        # times = torch.tensor([0]*n_diffusion_steps_without_noise + [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24], device=device)
         # times = torch.tensor(list(range(self.n_diffusion_steps-1, -1, -time_jump)) + [0]*(n_diffusion_steps_without_noise), device=device)
         times = torch.tensor([24, 20, 18, 17, 16, 15, 14, 12, 10, 6, 3] + [0]*n_diffusion_steps_without_noise, device=device)
-        # times = torch.tensor([24, 20, 18, 16, 14, 10, 5,] + [0]*n_diffusion_steps_without_noise, device=device)
         time_pairs = list(zip(times[:-1], times[1:]))
         total_step_num = len(times)
 
@@ -266,82 +259,8 @@ class GaussianDiffusionModel(nn.Module, ABC):
                                 x0=x0,
                                 sampler=sampler,
                                 structured_noise=structured_noise,
-                                eta=1.0, # DDIM
+                                eta=1.0,
                                 **sample_kwargs)
-            
-            if recurrencing and time < 2:
-                betas = extract(self.betas, t, x.shape)
-                x = torch.sqrt(1-betas)*x + torch.sqrt(betas)*torch.rand_like(x)
-
-            x = apply_hard_conditioning(x, hard_conds)
-
-            if return_chain:
-                if x0:
-                    values = apply_hard_conditioning(values, hard_conds)
-                    chain.append(values)
-                else:
-                    chain.append(x)
-
-        if return_chain:
-            chain = torch.stack(chain, dim=1)
-            return x, chain
-
-        return x
-    
-    @torch.no_grad()
-    def re_ddpm_sample_loop(
-        self, shape, hard_conds, 
-        context=None, return_chain=False,
-        n_diffusion_steps_without_noise=0,
-        init_structured_noise=False,
-        structured_noise=False,
-        recurrencing=False,
-        sampler=None,
-        x0=True,
-        **sample_kwargs
-    ):
-        device = self.betas.device
-        batch_size = shape[0]
-
-        times = torch.tensor([0]*n_diffusion_steps_without_noise + list(range(0, self.n_diffusion_steps, 1)), device=device)
-        next_times = torch.tensor([0]*(n_diffusion_steps_without_noise + 1) + list(range(0, self.n_diffusion_steps-2, 1)), device=device)
-        times = list(reversed(times.int().tolist()))
-        next_times = list(reversed(next_times.int().tolist()))
-        time_pairs = list(zip(times, next_times))  # [(T-1, T-3), (T-2, T-4), ..., (1, 0), (0, 0), ..., (0, 0)]
-
-        if init_structured_noise:
-            x = sampler.sample((shape[0],)).reshape(shape)
-        else:
-            x = torch.randn(shape, device=device)
-
-        chain = [x] if return_chain else None
-        for time, time_next in time_pairs:
-            direct_forward = True
-            eta = 1
-
-            t = make_timesteps(batch_size, time, device)
-            t_next = make_timesteps(batch_size, time_next, device)
-
-            alpha_next = extract(self.alphas_cumprod, t_next, x.shape)
-            sqrt_one_minus_alpha_cumprod = extract(self.sqrt_one_minus_alphas_cumprod, t, x.shape)
-
-            x, values = noise_ddim_sample_fn(self, x, hard_conds, context, t, alpha_next,
-                                  noise_scale=sqrt_one_minus_alpha_cumprod, 
-                                  x0=x0,
-                                  sampler=sampler,
-                                  structured_noise=structured_noise,
-                                  eta=eta,
-                                  direct_forward=direct_forward,
-                                  **sample_kwargs)
-            
-            # recurrencing : go back in one time step.
-            if time >= 2: # edge cases
-                betas = extract(self.betas, t_next, x.shape)
-                x = torch.sqrt(1-betas)*x + torch.sqrt(betas)*torch.rand_like(x)
-
-            if recurrencing and time < 2:
-                betas = extract(self.betas, t, x.shape)
-                x = torch.sqrt(1-betas)*x + torch.sqrt(betas)*torch.rand_like(x)
 
             x = apply_hard_conditioning(x, hard_conds)
 
@@ -362,7 +281,6 @@ class GaussianDiffusionModel(nn.Module, ABC):
     def diffusion_es_sample_loop(
         self, shape, hard_conds, 
         context=None, return_chain=False,
-        recurrencing = False,
         n_diffusion_steps_without_noise=0,
         structured_noise=False,
         sampler=None,
@@ -407,11 +325,8 @@ class GaussianDiffusionModel(nn.Module, ABC):
                                     x0=x0,
                                     sampler=sampler,
                                     structured_noise=False,
-                                    eta = 1 * (1-k/loop_num), # DDIM
+                                    eta = 1 * (1-k/loop_num),
                                     **sample_kwargs)
-                if recurrencing and time < 2:
-                    betas = extract(self.betas, t, x.shape)
-                    x = torch.sqrt(1-betas)*x + torch.sqrt(betas)*torch.rand_like(x)
 
                 x = apply_hard_conditioning(x, hard_conds)
 
@@ -429,13 +344,6 @@ class GaussianDiffusionModel(nn.Module, ABC):
             x = resample_model_mean(cost, x, x, temperature=10)
             x = torch.sqrt(alpha_last) * x + sqrt_one_minus_alpha_cumprod_last * noise
 
-            # last_time = make_timesteps(batch_size, torch.tensor(self.n_diffusion_steps * (1 - k/self.n_diffusion_steps)-1, device=device), device)
-            # times = torch.tensor(list(range(self.n_diffusion_steps-1, -1, -time_jump)) + [0]*n_diffusion_steps_without_noise, device=device)
-            # time_pairs = list(zip(times[:-1], times[1:]))
-
-            # alpha_last = extract(self.alphas_cumprod, last_time, x.shape)
-            # sqrt_one_minus_alpha_cumprod_last = extract(self.sqrt_one_minus_alphas_cumprod, last_time, x.shape)
-
         if return_chain:
             chain = torch.stack(chain, dim=1)
             return x, chain
@@ -446,7 +354,6 @@ class GaussianDiffusionModel(nn.Module, ABC):
     def diffusion_es_sample_loop_ver2(
         self, shape, hard_conds, 
         context=None, return_chain=False,
-        recurrencing = False,
         n_diffusion_steps_without_noise=0,
         structured_noise=False,
         sampler=None,
@@ -472,7 +379,6 @@ class GaussianDiffusionModel(nn.Module, ABC):
                       x0=x0,
                       structured_noise=False, 
                       sampler=None,
-                      recurrencing=False,
                       **sample_kwargs)
         
         chain = [init_chain] if return_chain else None
@@ -503,9 +409,6 @@ class GaussianDiffusionModel(nn.Module, ABC):
                                                 structured_noise=False,
                                                 **sample_kwargs)
                 
-                if recurrencing and 0 >= i > -n_diffusion_steps_without_noise:
-                    betas = extract(self.betas, t, x.shape)
-                    x = torch.sqrt(1-betas)*x + torch.sqrt(betas)*torch.rand_like(x)
                 x = apply_hard_conditioning(x, hard_conds)
 
                 if return_chain:
@@ -540,9 +443,6 @@ class GaussianDiffusionModel(nn.Module, ABC):
 
         if time_sample_ver == 'ddim':
             return self.ddim_sample(shape, hard_conds, **sample_kwargs)
-        
-        elif time_sample_ver == 'ddpm_recurrencing':
-            return self.re_ddpm_sample_loop(shape, hard_conds, **sample_kwargs)
         
         elif time_sample_ver == 'ddpm':
             return self.p_sample_loop(shape, hard_conds, **sample_kwargs)

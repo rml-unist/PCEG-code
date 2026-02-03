@@ -13,8 +13,7 @@ from einops._torch_specific import allow_ops_in_compiled_graph  # requires einop
 from experiment_launcher import single_experiment_yaml, run_experiment
 from mp_baselines.planners.costs.cost_functions import CostCollision, CostComposite, CostGPTrajectory
 from mpd.models import TemporalUnet, UNET_DIM_MULTS
-from mpd.models.diffusion_models.guides import GuideManagerTrajectoriesWithVelocity, GuideManagerTrajectoriesWithSTOMP, \
-                                                GuideManagerTrajectoriesWithAdversary
+from mpd.models.diffusion_models.guides import GuideManagerTrajectoriesWithVelocity, GuideManagerTrajectoriesWithSTOMP
 from mpd.models.diffusion_models.sample_functions import mean_ddpm_sample_fn, noise_ddpm_sample_fn, mean_guide_gradient_steps
 from mpd.trainer import get_dataset, get_model
 from mpd.utils.loading import load_params_from_yaml
@@ -33,6 +32,7 @@ allow_ops_in_compiled_graph()
 # Todo : make visualization part indepedent from this file using pkl files
 
 TRAINED_MODELS_DIR = '/nas_data/MPD/data_trained_models/'
+ROBOT_ASSET_DIR = "~/Desktop/isaacgym/assets"
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -124,7 +124,6 @@ def get_stochGPMP_sampler(
         sampler = torch.distributions.MultivariateNormal(torch.zeros(2*dof*num_steps).to(**tensor_args), precision_matrix=K_inv)
         return sampler
 
-# @single_experiment_yaml
 def experiment(
     ########################################################################################################################
     # Experiment configuration
@@ -136,33 +135,31 @@ def experiment(
     # planner_alg: str = 'diffusion_prior_then_guide',
     planner_alg: str = 'mpd', #'mpd', 'diffusion_prior_then_stomp'
     sample_ver: str = 'noise_ddpm',
-    chain_x0: bool = True, # visualize recon / latent
+    chain_x0: bool = True, # visualize True : recon / False : latent
 
     use_guide_on_extra_objects_only: bool = False,
 
     n_samples: int = 100,
 
-    # Todo : find the role of these variables
-    latent_guide: bool = False, #False: Universal guidance
+    latent_guide: bool = False,
     gradient_free_guide: bool = True, # True : STOMP
-    gradient_free_guide_ver: str = 'STOMP', # 'STOMP', 'Adv'
+    gradient_free_guide_ver: str = 'STOMP',
 
-    resample: bool = False,
+    resample: bool = False, # True for diffusion-es
     guidance_sample: int = 15, # 2d: 5, panda: 15
     start_guide_steps_fraction: float = 1, 
     n_guide_steps: int = 1,
     n_diffusion_steps_without_noise: int = 5,
     n_post_gradient_step: int = 5,
     
-    structured_noise: bool = False,
-    recurrencing: bool = False,
-    time_sample_ver: str = 'ddpm', # ddpm, ddim, ddpm_recurrencing, diffusion-es
+    structured_noise: bool = True,
+    time_sample_ver: str = 'ddpm', # ddpm, ddim, diffusion-es
 
-    weight_grad_cost_collision: float = 1e-2, # 1e-2
-    weight_grad_cost_smoothness: float = 1e-7, # 1e-7
+    weight_grad_cost_collision: float = 1e-2,
+    weight_grad_cost_smoothness: float = 1e-7, 
     noise_size: float = 1,
-    step_size: float = 5, 
-    negative_step_size: float = 0.5, # 1
+    step_size: float = 3, 
+    negative_step_size: float = 0.5, 
 
     factor_num_interpolated_points_for_collision: float = 1.5,
 
@@ -177,7 +174,7 @@ def experiment(
 
     ########################################################################
     # MANDATORY
-    seed: int = 30,
+    seed: int = 4,
     results_dir: str = 'logs',
     save_dir: str = './',
 
@@ -209,9 +206,7 @@ def experiment(
     model_dir = os.path.join(TRAINED_MODELS_DIR, model_id)
     str_step_size = f'{step_size:.2g}'
 
-    # results_dir = os.path.join(save_dir, model_id, sample_ver, str(seed), str(guidance_sample))
     results_dir = os.path.join(save_dir, model_id, sample_ver, time_sample_ver, str(seed), str(guidance_sample))
-    # results_dir = os.path.join(save_dir, model_id, sample_ver, str(n_post_gradient_step), str(seed), str_step_size)
 
     os.makedirs(results_dir, exist_ok=True)
 
@@ -236,12 +231,6 @@ def experiment(
     env = dataset.env    
     robot = dataset.robot
     task = dataset.task
-
-    # env = EnvTableShelf(tensor_args=tensor_args) #dataset.env   
-    # env = EnvTableObject(tensor_args=tensor_args)
-    # env = EnvShelfonTable(tensor_args=tensor_args)
-    # robot = RobotPanda(grasped_object=GraspedObjectPandaBox(tensor_args=tensor_args), tensor_args=tensor_args) # dataset.robot
-    # task = torch_robotics.tasks.tasks.PlanningTask(env=env, robot=robot, tensor_args=tensor_args) #dataset.task
 
     dt = trajectory_duration / n_support_points  # time interval for finite differences
     sigma_gp = 1.0
@@ -271,7 +260,6 @@ def experiment(
     )
     diffusion_model.load_state_dict(
         torch.load(os.path.join(model_dir, 'checkpoints', 'ema_model_current_state_dict.pth' if args['use_ema'] else 'model_current_state_dict.pth'),
-        # torch.load(os.path.join(model_dir, 'checkpoints', 'ema_model_epoch_4729_iter_350000_state_dict.pth' if args['use_ema'] else 'model_epoch_4729_iter_350000state_dict.pth'),
         map_location=tensor_args['device'])
     )
     diffusion_model.eval()
@@ -285,23 +273,6 @@ def experiment(
      # Random initial and final positions
     n_tries = 100
     start_state_pos, goal_state_pos = None, None
-
-    # table shelf
-    # start_state_pos = torch.tensor([-0.8939,  0.9926,  0.9782, -0.9751, -0.9205,  0.7326, -0.9320]).to(**tensor_args)
-    # goal_state_pos = torch.tensor([1.4238,  1.1257, -0.9062, -1.4260,  2.2422,  2.0772,  1.9869]).to(**tensor_args)
-
-    # table shelf - grasped object
-    # start_state_pos = torch.tensor([2.4578, -1.2870, -2.5946, -0.6008, -0.6913,  1.4121,  0.3714]).to(**tensor_args)
-    # goal_state_pos = torch.tensor([ 0.5032,  0.6852,  0.1350, -1.3132,  1.5690,  1.7538, -1.2289]).to(**tensor_args)
-
-    # table object - grapsed object
-    # start_state_pos = torch.tensor([-0.0691,  0.3023, -0.6698, -2.2962,  0.2985,  2.5010, -1.7230]).to(**tensor_args)
-    # goal_state_pos = torch.tensor([0.7186,  0.9205,  0.9156, -2.5072, -1.7072,  0.8746,  0.7100]).to(**tensor_args)
-
-    # shelf on table - grasped object
-    # Too cluttered : decreased collision margin in task.py line 255
-    # start_state_pos = torch.tensor([0.4770,  0.6159, -0.4006, -2.4148, -1.4283,  1.7990, -2.5155]).to(**tensor_args)
-    # goal_state_pos = torch.tensor([0.1287, -0.5467, -0.1503, -1.9593, -2.7611,  3.2674, -2.8131]).to(**tensor_args)
 
     for _ in range(n_tries):
         q_free = task.random_coll_free_q(n_samples=2)
@@ -388,8 +359,6 @@ def experiment(
     if gradient_free_guide:
         if gradient_free_guide_ver == 'STOMP':
             GuideClass = GuideManagerTrajectoriesWithSTOMP
-        elif gradient_free_guide_ver == 'Adv':
-            GuideClass = GuideManagerTrajectoriesWithAdversary 
         else:
             if gradient_free_guide_ver is None:
                 raise ValueError("gradient_free_guide is None but gradient_free_guide = True")
@@ -433,7 +402,6 @@ def experiment(
         noise_std_extra_schedule_fn=lambda x: noise_size, 
         step_size=step_size,
         negative_step_size=negative_step_size,
-        recurrencing=recurrencing,
         tensor_args=tensor_args
     )
 
@@ -459,7 +427,6 @@ def experiment(
     # run extra guiding steps without diffusion
     if run_prior_then_stomp:
         zero_tensor = torch.tensor([0]).to(device)      
-        # print(SigmaInv.shape)                                                                                                                                                                                                                                                                                                                         
 
         with TimerCUDA() as timer_post_model_sample_guide:
             trajs = trajs_normalized_iters[-1].unsqueeze(0)
@@ -471,7 +438,6 @@ def experiment(
                 perturbation = sampler.sample(perturbe_shape[:2]).view(perturbe_shape)
                 perturbed_trajs = trajs + 0.1*perturbation
                 gradient = gradient_estimator.forward(perturbed_trajs, zero_tensor, perturbation, zero_tensor, guidance_sample, temperature=1e-4)
-                # print(gradient.shape)
 
                 trajs = trajs + 1e-2*gradient
                 trajs_post_diff_l.append(trajs.squeeze(0))
@@ -591,7 +557,7 @@ def experiment(
 
             motion_planning_isaac_env = PandaMotionPlanningIsaacGymEnv(
                 env, robot, task,
-                asset_root="./deps/isaacgym/assets",
+                asset_root=ROBOT_ASSET_DIR,
                 controller_type='position',
                 num_envs=trajs_pos.shape[1],
                 all_robots_in_one_env=True,
@@ -638,7 +604,7 @@ def experiment(
                 
                 motion_planning_isaac_env = PandaMotionPlanningIsaacGymEnv(
                     env, robot, task,
-                    asset_root="./deps/isaacgym/assets",
+                    asset_root=ROBOT_ASSET_DIR,
                     controller_type='position',
                     num_envs=1,
                     all_robots_in_one_env=True,
@@ -685,7 +651,6 @@ def experiment(
                 trajs=pos_trajs_iters[-1], start_state=start_state_pos, goal_state=goal_state_pos,
                 plot_trajs=True,
                 video_filepath=os.path.join(results_dir, f'{base_file_name}-robot-traj.gif'),
-                # n_frames=max((2, pos_trajs_iters[-1].shape[1]//10)),
                 n_frames=pos_trajs_iters[-1].shape[1],
                 anim_time=trajectory_duration
             )
@@ -694,8 +659,6 @@ def experiment(
 
 
 if __name__ == '__main__':
-    # Leave unchanged
-    # run_experiment(experiment)
     # args = parser.parse_args()
 
     experiment(
