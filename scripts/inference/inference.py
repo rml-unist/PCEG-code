@@ -549,6 +549,9 @@ def experiment(
             n_first_steps = 10
             n_last_steps = 10
             
+            if trajs_final_free is None:
+                raise "No collision-free trajectory"
+                
             traj_num, _, _ = trajs_final_free.shape
             trajs_pos = robot.get_position(trajs_final_free).movedim(1, 0)          
             trajs_vel = robot.get_velocity(trajs_final_free).movedim(1, 0)
