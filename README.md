@@ -12,8 +12,6 @@
   </tr>
 </table>
 
-To see additional qualitative results, please refer to the supplementary video: **_PCEG_supplementary.mp4_**.
-
 ---
 ## Installation
 
@@ -23,27 +21,27 @@ Pre-requisites:
 Clone this repository with
 ```bash
 cd ~
-git clone https://github.com/rml-unist/STOMP-Guided_Diffusion.git
-cd STOMP-Guided_Diffusion
+git clone https://github.com/rml-unist/PCEG-code.git
+cd PCEG-code
 ```
 
 Download [IsaacGym Preview 4](https://developer.nvidia.com/isaac-gym) and extract it under `./deps/isaacgym`
 ```bash
-mv ~/Downloads/IsaacGym_Preview_4_Package.tar.gz ~/mpd-public/deps/
-cd ~/mpd-public/deps
+mv ~/Downloads/IsaacGym_Preview_4_Package.tar.gz ~/PCEG-code/deps/
+cd ~/PCEG-code/deps
 tar -xvf IsaacGym_Preview_4_Package.tar.gz
 ```
 
 Run the bash setup script to install everything.
 ```
-cd ~/mpd-public
+cd ~/PCEG-code
 bash setup.sh
 ```
 
 ---
-## Running the MPD inference
+## Running the inference
 
-To try out the MPD inference, first download the data and the trained models. 
+To try out the inference, first download the data and the trained models. 
 
 ```bash
 conda activate mpd
