@@ -77,15 +77,11 @@ model_id: str = 'EnvSpheres3D-RobotPanda'
 The results will be saved under `./[model_id]/`.
 
 ---
-Most of this repository is based on the following work:
-
-Carvalho, J.; Le, A.T.; Baierl, M.; Koert, D.; Peters, J. (2023).
-**_Motion Planning Diffusion: Learning and Planning of Robot Motions with Diffusion Models_**,
-IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS).
-
-[<img src="https://img.shields.io/badge/arxiv-%23B31B1B.svg?&style=for-the-badge&logo=arxiv&logoColor=white" />](https://arxiv.org/abs/2308.01557)
-
+## Credit
 This repository contains code derived from or adapted from
 [joaoamcarvalho/mpd-public](https://github.com/joaoamcarvalho/mpd-public),
-which is licensed under the MIT License. The original license notice is preserved
-in `NOTICE` and/or `LICENSE-THIRD-PARTY`.
+which is licensed under the MIT License. The original license notice is preserved in `LICENSE`.
+
+Carvalho, J.; Le, A.T.; Baierl, M.; Koert, D.; Peters, J. (2023). **_Motion Planning Diffusion: Learning and Planning of Robot Motions with Diffusion Models_**, IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS). [Link](https://www.ias.informatik.tu-darmstadt.de/uploads/Team/JoaoCarvalho/2023-iros-carvalho-mpd.pdf)
+
+
